@@ -43,10 +43,14 @@
     $PSStandardMembers = [System.Management.Automation.PSMemberInfo[]]@($defaultDisplayPropertySet)
 
     $repsvr = New-Object "Microsoft.SqlServer.Replication.ReplicationServer" $sqlinstance
-    $repDB = %{ if ($Database) {$repsvr.ReplicationDatabases | Where {$Database -contains $_.Name}} else {$repsvr.ReplicationDatabases} }
-    $repPub = %{ if ($Publication) {$repDB.TransPublications| Where {$Publication -contains $_.Name}} else {$repDB.TransPublications} }
-    $Articles =  %{ if ($Article) {$repPub.TransArticles| Where {$_.SourceObjectName -eq $Article.ObjectName -and $_.SourceObjectOwner -eq $Article.ObjectSchema}} else {$repPub.TransArticles} } 
-
+    if($repsvr.IsExistingObject) {
+        $repDB = %{ if ($Database) {$repsvr.ReplicationDatabases | Where {$Database -contains $_.Name}} else {$repsvr.ReplicationDatabases} }
+        $repPub = %{ if ($Publication) {$repDB.TransPublications| Where {$Publication -contains $_.Name}} else {$repDB.TransPublications} }
+        $Articles =  %{ if ($Article) {$repPub.TransArticles| Where {$_.SourceObjectName -eq $Article.ObjectName -and $_.SourceObjectOwner -eq $Article.ObjectSchema}} else {$repPub.TransArticles} } 
+    }
+    else {
+        Write-Error "Cannot connect to $sqlinstance"
+    }
     #Give this object a unique typename
     $Articles.PSObject.TypeNames.Insert(0,'Replication.Articles')
     $Articles | Add-Member MemberSet PSStandardMembers $PSStandardMembers 

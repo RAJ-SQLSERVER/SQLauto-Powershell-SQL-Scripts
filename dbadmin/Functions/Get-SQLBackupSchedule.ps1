@@ -62,7 +62,7 @@ SELECT sysdb.name
 WHEN @WeeklyBackupDay = 'TRUE' THEN 'D' --Full Backup on the day when weekly backup have been set
 WHEN @WeeklyBackupDay = 'TRUE' AND sysdb.is_read_only = 1 THEN 'D' --If database read only only take a full backup on weekly backup day
 WHEN sysdb.database_id < 5 THEN 'D' --Always do a Full backup for system databases
-WHEN dbl.differential_base_lsn <> mf.differential_base_lsn THEN 'D' --Full backup if differential chain has broken
+WHEN mf.differential_base_lsn IS NULL OR (dbl.differential_base_lsn <> mf.differential_base_lsn) THEN 'D' --Full backup if differential chain has broken or no previous first full backup
 WHEN sysdb.database_id >=5 AND sysdb.is_read_only = 0 AND ISNULL(DATEDIFF(DAY,backup_start_date,CAST(getdate() as DATE)),99) < 7 THEN 'I' --Differential backup on all other days
 WHEN sysdb.database_id >=5 AND sysdb.is_read_only = 0 AND ISNULL(DATEDIFF(DAY,backup_start_date,CAST(getdate() as DATE)),99) >= 7 THEN 'D' --Full Backup if last full backup greater than 7 days (catch all if weekly job fails)       
 ELSE NULL 

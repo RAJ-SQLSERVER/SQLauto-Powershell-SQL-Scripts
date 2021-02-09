@@ -43,15 +43,16 @@
     Write-Verbose "Making a connection to $publisherInstance"
 
     Try {
-    $publisherConn = New-Object “Microsoft.SqlServer.Management.Common.ServerConnection” $publisherInstance
-    $publisherConn.connect()   
-    Write-Verbose "Successfully connected to $publisherInstance"
+        $publisherConn = New-Object “Microsoft.SqlServer.Management.Common.ServerConnection” $publisherInstance
+        $publisherConn.connect()   
+        Write-Verbose "Successfully connected to $publisherInstance"
     }
     Catch {
         Write-Error "Error: Could not connect to Publisher $publisherInstance"
     }
 
     Write-Verbose "Checking to see if Distributor components have been installed"
+
     Try {
         $distributor = New-Object Microsoft.SqlServer.Replication.ReplicationServer $publisherConn.SqlConnectionObject
         }
@@ -69,7 +70,7 @@
 
             #Setup and create the publisher components, must do this before creating a publication
             $publisher = New-object “Microsoft.SqlServer.Replication.DistributionPublisher” ($publisherInstance, $publisherConn)
-            $publisher.WorkingDirectory = "\\mearsgroup.co.uk\mearsdfs\apps\ferndown\interface\Replication\Silo"
+            $publisher.WorkingDirectory = "\\mearsgroup.co.uk\mearsdfs\apps\ferndown\interface\Replication\unc"
             $publisher.DistributionDatabase = "Distribution"
             $publisher.PublisherSecurity.WindowsAuthentication = 1
             $publisher.Create()
@@ -105,17 +106,19 @@
             Write-Verbose "Creating publication $publicationName for $publicationDBName database"
             $publication = New-Object "Microsoft.SqlServer.Replication.TransPublication" ($publicationName, $publicationDbName,$publisherConn.SqlConnectionObject)
             If ( -not $publication.IsExistingObject) {
-            $publication.ConnectionContext = $publisherConn.SqlConnectionObject
-            $publication.DatabaseName = $publicationDbName
-            $publication.Description = "Transactional publication of database $publicationDBName from Publisher $publisherInstance created with powershell."
-            $publication.SnapshotMethod = [Microsoft.SqlServer.Replication.InitialSyncType]::ConcurrentNative
+                $publication.Name = $publicationName
+                $publication.ConnectionContext = $publisherConn.SqlConnectionObject
+                $publication.DatabaseName = $publicationDbName
+                $publication.Description = "Transactional publication of database $publicationDBName from Publisher $publisherInstance created with powershell."
+                $publication.SnapshotMethod = [Microsoft.SqlServer.Replication.InitialSyncType]::ConcurrentNative
 
-            $publication.SnapshotGenerationAgentPublisherSecurity.WindowsAuthentication = 1
-            $publication.CreateSnapshotAgentByDefault = 1
-            $publication.Name = $publicationName
+                $publication.Attributes = $publication.Attributes -bor [Microsoft.SqlServer.Replication.PublicationAttributes] "AllowPull,AllowPush,IndependentAgent"          
 
-            #$publication.AltSnapshotFolder = "\\mearsgroup.co.uk\mearsdfs\apps\ferndown\interface\Replication\Silo"
-            $publication.Create()
+                $publication.SnapshotGenerationAgentPublisherSecurity.WindowsAuthentication = 1
+                $publication.CreateSnapshotAgentByDefault = 1
+                $publication.Status = [Microsoft.SqlServer.Replication.State]::Active
+
+                $publication.Create()
             }
             else {
                 Write-Warning "$publicationName publication already exists on $publicationDbName"

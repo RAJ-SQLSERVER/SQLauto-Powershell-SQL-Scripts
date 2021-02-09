@@ -38,61 +38,73 @@
 
         write-verbose "Beginning process loop"
         Try {
-        $publisherConn = New-Object “Microsoft.SqlServer.Management.Common.ServerConnection” $publisherInstance
-        $publisherConn.connect()
+            $publisherConn = New-Object “Microsoft.SqlServer.Management.Common.ServerConnection” $publisherInstance
+            $publisherConn.DatabaseName = $publicationDbName
+            $publisherConn.connect()
 
-        $SubscriberConn = New-Object “Microsoft.SqlServer.Management.Common.ServerConnection” $subscriberInstance
-        $SubscriberConn.connect()
+            $SubscriberConn = New-Object “Microsoft.SqlServer.Management.Common.ServerConnection” $subscriberInstance
+            $SubscriberConn.DatabaseName = $subscriptionDbName
+            $SubscriberConn.connect()
         }
         Catch {
-            Write-Error "Error: Could not connect to Publisher $publisherInstance"
+            Write-Error "Error: Could not connect to Publisher/Subscriber database"
         }
 
         Try {
 
-        # Create connections to the Publisher and Subscriber.
-        $publicationDB = New-Object "Microsoft.SqlServer.Replication.TransPublication" ($publicationName, $publicationDbName,$publisherConn.SqlConnectionObject)
+            # Create connections to the Publisher and Subscriber.
+            $publication = New-Object "Microsoft.SqlServer.Replication.TransPublication" ($publicationName, $publicationDbName,$publisherConn.SqlConnectionObject)
 
-        If($publicationDB.LoadProperties()) {
+            If($publication.LoadProperties()) {
 
-            If ($publicationDB.Attributes -notmatch "AllowPull") {
-                $publicationDB.Attributes = "AllowPull ,$($publicationDB.Attributes)"
-            }
-            $SyncType = [Microsoft.SqlServer.Replication.SubscriptionSyncType]::Automatic
-            $SubscriberType = [Microsoft.SqlServer.Replication.TransSubscriberType]::ReadOnly
+                If ($publication.Attributes -notmatch "AllowPull") {
+                    $publication.Attributes = "AllowPull ,$($publication.Attributes)"
+                    $publication.CommitPropertyChanges()
+                }
+                $SyncType = [Microsoft.SqlServer.Replication.SubscriptionSyncType]::Automatic
+                $SubscriberType = [Microsoft.SqlServer.Replication.TransSubscriberType]::ReadOnly
                        
-            $publicationDB.MakePullSubscriptionWellKnown($subscriberInstance, $subscriptionDbName,$SyncType,$SubscriberType)
-            $publicationDB.CommitPropertyChanges()
+                #$subscriber = New-Object "Microsoft.SqlServer.Replication.TransPullSubscription" ("MearsData_Silo","FERNMCMSQL02","MearsData_HFI","MearsData_HFI_Silo",$SubscriberConn)
+                $subscriber = New-Object "Microsoft.SqlServer.Replication.TransPullSubscription"
+                $subscriber.ConnectionContext = $subscriberConn.SqlConnectionObject
+                $subscriber.DatabaseName = $subscriptionDbName
+                $subscriber.Description = "Pull subscription to $publicationDbName on $publisherInstance"
+                $subscriber.PublisherName = $publisherInstance
+                $subscriber.PublicationName = $publicationName
+                $subscriber.PublicationDBName = $publicationDbName
 
+                $subscriber.AgentSchedule.FrequencyType = [Microsoft.SqlServer.Replication.ScheduleFrequencyType]::Continuously
 
-            #$subscriber = New-Object "Microsoft.SqlServer.Replication.TransPullSubscription" ("MearsData_Silo","FERNMCMSQL02","MearsData_HFI","MearsData_HFI_Silo",$SubscriberConn)
-            $subscriber = New-Object "Microsoft.SqlServer.Replication.TransPullSubscription"
-            $subscriber.ConnectionContext = $subscriberConn.SqlConnectionObject
-            $subscriber.DatabaseName = $subscriptionDbName
-            $subscriber.Description = "Pull subscription to $publicationDbName on $publisherInstance"
-            $subscriber.PublisherName = $publisherInstance
-            $subscriber.PublicationName = $publicationName
-            $subscriber.PublicationDBName = $publicationDbName
-            $subscriber.Attributes = "None" #Clear All atributes
+                $subscriber.CreateSyncAgentByDefault = 1
 
-            $subscriber.AgentSchedule.FrequencyType = [Microsoft.SqlServer.Replication.ScheduleFrequencyType]::Continuously
+                $subscriber.Create()
 
-            $subscriber.CreateSyncAgentByDefault = 1
+                [switch]$registered = $false
 
-            $subscriber.Create()
+                foreach($subscriber in $publication.EnumSubscriptions()) {
+                    if($subscriber.SubscriberName -eq $subscriptionDbName) {
+                        $registered = $true
+                    }
+                }
 
-            $subscriber | Select PublisherName, PublicationDBName, PublicationName, @{Name = "SubscriberName" ; Expression = { $subscriberInstance } }, @{Name = "SubscriptionDB" ; Expression = { $subscriptionDbName } }
+                if(!$registered) {
+                    $publication.MakePullSubscriptionWellKnown($subscriberInstance,$subscriptionDbName,$SyncType,$SubscriberType)
+                    $publication.CommitPropertyChanges()
+                }
+
+                $subscriber | Select PublisherName, PublicationDBName, PublicationName, @{Name = "SubscriberName" ; Expression = { $subscriberInstance } }, @{Name = "SubscriptionDB" ; Expression = { $subscriptionDbName } }
+
+            }
+            else {
+                Write-warning "$publicationName publication does not exists on $publicationDbName"
+            }
+        }
+        Catch {
+            $ErrorMessage = $_.Exception.Message
+            Write-Error "Crap something went wrong creating the pull subscription: $ErrorMessage"
 
         }
-        else {
-            Write-warning "$publicationName publication does not exists on $publicationDbName"
-        }
-    }
-    Catch {
-        Write-Error "Crap something went wrong creating a publication!"
-    }
     
-
   }
 
   End {

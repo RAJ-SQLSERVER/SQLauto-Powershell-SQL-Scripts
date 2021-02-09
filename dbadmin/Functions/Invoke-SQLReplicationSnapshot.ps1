@@ -47,10 +47,10 @@
     #$publication = New-Object "Microsoft.SqlServer.Replication.TransPublication" ('MearsData_Glasgow_Silo', 'MearsData_Glasgow',$publisherConn)
     
     #$publication | gm
-    $publication = New-Object "Microsoft.SqlServer.Replication.TransPublication" ($publicationName, $publicationDbName,$publisherConn)
+    $publication = New-Object "Microsoft.SqlServer.Replication.TransPublication" ($publicationName, $publicationDbName,$publisherConn.SqlConnectionObject)
 
     #$publicationName = "MearsData_Ben_Silo"
-    $Monitor = New-Object "Microsoft.SqlServer.Replication.ReplicationMonitor" ($publisherConn)
+    $Monitor = New-Object "Microsoft.SqlServer.Replication.ReplicationMonitor" ($publisherConn.SqlConnectionObject)
     #Check current status of agent
     $SnapAgent = $Monitor.EnumSnapshotAgents() | foreach { $_.Tables} | foreach { $_.Rows | Where {$_.publication -eq $publicationName} }
     

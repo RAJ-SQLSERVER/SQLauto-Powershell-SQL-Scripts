@@ -37,11 +37,15 @@ foreach ($assembly in $assemblies)
 $ExternalFuncs = Get-ChildItem -Recurse "$PSScriptRoot\External" -Include *.ps1 
 
 # dot source the individual scripts that make-up this module
-foreach ($function in $ExternalFuncs) { . $function.FullName }
+foreach ($function in $ExternalFuncs) { 
+    $ExecutionContext.InvokeCommand.InvokeScript($false, ([scriptblock]::Create([io.file]::ReadAllText($function.FullName))), $null, $null)
+}
 
 $functions = Get-ChildItem -Recurse "$PSScriptRoot\Functions" -Include *.ps1 
 
 # dot source the individual scripts that make-up this module
-foreach ($function in $functions) { . $function.FullName }
+foreach ($function in $functions) { 
+    $ExecutionContext.InvokeCommand.InvokeScript($false, ([scriptblock]::Create([io.file]::ReadAllText($function.FullName))), $null, $null)
+}
 
 Write-Host -ForegroundColor Green "Module $(Split-Path $PSScriptRoot -Leaf) was successfully loaded."

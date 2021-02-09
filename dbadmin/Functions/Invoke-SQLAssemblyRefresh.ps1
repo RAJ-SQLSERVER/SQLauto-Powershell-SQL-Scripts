@@ -147,7 +147,7 @@ IF OBJECT_ID('tempdb..#DotNetFolder') IS NOT NULL DROP TABLE #DotNetFolder
             $dbs = $server.Databases[$database]
         } else {
             write-verbose "No database parameter set processing all databases"
-            $dbs = $server.Databases
+            $dbs = $server.Databases | Where {$_.Status -eq "Normal"}
         }
 
         if ($dbs) {   

@@ -1,4 +1,4 @@
-﻿function Add-SQLReplicationArticle {
+﻿function Update-SQLReplicationArticle {
   <#
   .SYNOPSIS
   Functions adds a new article to an existing replication publisher
@@ -41,7 +41,7 @@
     [Parameter(Mandatory=$False, HelpMessage='What is the schema of the destination table?')]
     [String]$DestinationSchema,
     [Parameter(Mandatory=$False, HelpMessage='Please specify the filter based on this article?')]
-    [String]$FilterClause  
+    [String]$FilterClause   
 
   )
 
@@ -73,9 +73,10 @@
 
             $object = Split-SQLObjectName $table
 
-            $article = $publication.TransArticles | Where {$_.SourceObjectName -match $object.ObjectName -and $_.SourceObjectOwner -eq $object.ObjectSchema}
+            $article = $publication.TransArticles | Where {$_.SourceObjectName -eq $object.ObjectName -and $_.SourceObjectOwner -eq $object.ObjectSchema}
 
             if ($article -eq $null) {
+                try {
                 $newArticle = New-Object Microsoft.SqlServer.Replication.TransArticle
                 $newArticle.ConnectionContext = $publisherConn.SqlConnectionObject
                 $newArticle.Name = "$($object.ObjectName)_$($object.ObjectSchema)"
@@ -96,9 +97,28 @@
                     $newArticle.AddReplicatedColumns($AddCols)
                 }
                 $newArticle.Create()
+                Write-Verbose "$($object.ObjectSchema).$($object.ObjectName) created in $publicationName publication"
+
+                }
+                catch {
+                    Write-Warning "Error [$($newArticle.Name)]: $($_.Exception.Message) "
+                }
             } Else {
-                Write-Warning "$($object.ObjectSchema).$($object.ObjectName) already exists in $publicationName publication"
-                Continue;
+                try {
+                    $article.FilterClause = %{ If($FilterClause) {$FilterClause} Else {$article.FilterClause} }
+                    if($ArticleColumns) {
+                        $cols = ($article).ListReplicatedColumns()
+                        [string[]]$addCols = Compare-Object $cols $ArticleColumns | Where {$_.SideIndicator -eq "=>"} | %{$_.InputObject}
+                        [string[]]$delCols = Compare-Object $cols $ArticleColumns | Where {$_.SideIndicator -eq "<="} | %{$_.InputObject}
+                        if($addCols){$article.AddReplicatedColumns($addCols)}
+                        if($delcols){$article.RemoveReplicatedColumns($delCols)}
+                        }
+                    $article.refresh()
+                    Write-Host "$($object.ObjectSchema).$($object.ObjectName) updated in $publicationName publication"
+                }
+                catch {
+                    Write-Warning "Error [$($article.Name)]: $($_.Exception.Message) "
+                }
             }
         }
     } 

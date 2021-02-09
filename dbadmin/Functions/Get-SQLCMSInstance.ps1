@@ -24,16 +24,18 @@ Function Get-SQLCMSInstance {
   param
   (
     [Parameter( Mandatory=$True,HelpMessage='Specify the name of the Central Management Server?')]
-    [string]$CentralManagementServer
+    [string]$CentralManagementServer,
+    [switch]$IncludeCMSServer = $false
   )
 
   begin {
     write-verbose "Preparing to run queries"
-    Try {
-    $sqlconnection = New-Object “Microsoft.SqlServer.Management.Common.ServerConnection" SQLMONITOR02
-    $sqlconnection.connect()
+
+    try {
+        $sqlconnection = New-Object "Microsoft.SqlServer.Management.Common.ServerConnection" $CentralManagementServer
+        $sqlconnection.connect()
     }
-    Catch {
+    catch {
         Write-Error "Error: Could not connect to Central Management Server $CentralManagementServer"
     }
 
@@ -42,55 +44,30 @@ Function Get-SQLCMSInstance {
   Process {
         $collection = @(); $newcollection = @()
  
-        try { $cmstore = new-object Microsoft.SqlServer.Management.RegisteredServers.RegisteredServersStore($sqlconnection)}
-        catch { throw "Cannot access Central Management Server" }
- 
-        Function Parse-ServerGroup($serverGroup,$collection) {
- 
-            foreach ($instance in $serverGroup.RegisteredServers) {
-                $urn = $serverGroup.urn
-                $group = $serverGroup.name
-                $fullgroupname = $null
- 
-                for ($i = 0; $i -lt $urn.XPathExpression.Length; $i++) {
-                    $groupname = $urn.XPathExpression[$i].GetAttributeFromFilter("Name")
-
-                    if ($groupname -eq "DatabaseEngineServerGroup") { $groupname = $null }
-
-                    if ($i -ne 0 -and $groupname -ne "DatabaseEngineServerGroup" -and $groupname.length -gt 0 ) {
-                        $fullgroupname += "$groupname\"
-                    }
-                }
- 
-                if ($fullgroupname.length -gt 0) { $fullgroupname = $fullgroupname.TrimEnd("\") }
-
-                $object = New-Object PSObject -Property @{
-                        Server = $instance.servername
-                        Group = $groupname
-                        FullGroupPath = $fullgroupname
-                        }
-                $collection += $object
-            }
- 
-            foreach($group in $serverGroup.ServerGroups)
-            {
-                $newobject = (Parse-ServerGroup -serverGroup $group -collection $newcollection)
-                $collection += $newobject     
-            }
-            return $collection
+        try { 
+            $cmstore = new-object Microsoft.SqlServer.Management.RegisteredServers.RegisteredServersStore($sqlconnection)
+        }
+        catch { 
+            throw "Cannot access Central Management Server" 
         }
  
         foreach ($serverGroup in $cmstore.DatabaseEngineServerGroup) {  
             
-        $servers = Parse-ServerGroup -serverGroup $serverGroup -collection $newcollection 
-        foreach ($server in $servers) {
-                    [pscustomobject]@{
-                        Instance = $server.Server; 
-                        Group = $server.Group;
-                        FullGroupPath = $server.FullGroupPath;
-                    }
-        }
-            
+            $servers = Expand-CmsServerGroup -serverGroup $serverGroup -collection $newcollection 
+            foreach ($server in $servers) {
+                        [pscustomobject]@{
+                            Instance = $server.Server; 
+                            Group = $server.Group;
+                            FullGroupPath = $server.FullGroupPath;
+                        }
+            }
+            if($IncludeCMSServer){
+                        [pscustomobject]@{
+                            Instance = $CentralManagementServer; 
+                            Group = "CMS";
+                            FullGroupPath = "All Servers\CMS";
+                        }
+            }
         }
 
     }

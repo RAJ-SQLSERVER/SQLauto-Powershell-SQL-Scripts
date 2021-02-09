@@ -22,7 +22,8 @@
       HelpMessage='What SQL instance name would you like to target?')]
     [Alias('server ')]
     [ValidateLength(3,30)]
-    [string]$sqlinstance
+    [string]$sqlinstance,
+    [switch]$simple
   )
 
   begin {
@@ -105,7 +106,7 @@ SELECT
 
         write-verbose "Beginning process loop"
 
-        Write-host $sqlinstance
+        #Write-host $sqlinstance
 
         Try {
             $server = New-Object ('Microsoft.SqlServer.Management.Smo.Server') $sqlinstance
@@ -118,21 +119,27 @@ SELECT
 
         $PhysicalServer =  $server.ComputerNamePhysicalNetBIOS
 
-        try {
-            $cpuInfo = Get-WmiObject –class Win32_processor -ComputerName $PhysicalServer |  Group-Object systemname  | %{ 
-            New-Object psobject -Property @{
-                    Item = $_.name
-                    NumberOfCores = ($_.group | Measure-Object numberofcores -Sum).Sum
-                    NumberOfLogicalProcessors = ($_.group | Measure-Object NumberOfLogicalProcessors -Sum).Sum
-                    NumberOfSockets = $_.count
+        if(-not $simple) {
+            try {
+                #Get CPU Information
+                $cpuInfo = Get-WmiObject –class Win32_processor -ComputerName $PhysicalServer |  Group-Object systemname  | %{ 
+                New-Object psobject -Property @{
+                        Item = $_.name
+                        NumberOfCores = ($_.group | Measure-Object numberofcores -Sum).Sum
+                        NumberOfLogicalProcessors = ($_.group | Measure-Object NumberOfLogicalProcessors -Sum).Sum
+                        NumberOfSockets = $_.count
+                    }
                 }
+
+                #Get OS Information 
+                $OSInfo = Get-WmiObject Win32_OperatingSystem -ComputerName $PhysicalServer 
+
+                #Get Memory Information. The data will be shown in a table as MB, rounded to the nearest second decimal. 
+                $PhysicalMemory = Get-WmiObject CIM_PhysicalMemory -ComputerName $PhysicalServer | Measure-Object -Property capacity -Sum | % {[math]::round(($_.sum / 1GB),2)} 
             }
-            $OSInfo = Get-WmiObject Win32_OperatingSystem -ComputerName $PhysicalServer #Get OS Information 
-            #Get Memory Information. The data will be shown in a table as MB, rounded to the nearest second decimal. 
-            $PhysicalMemory = Get-WmiObject CIM_PhysicalMemory -ComputerName $PhysicalServer | Measure-Object -Property capacity -Sum | % {[math]::round(($_.sum / 1GB),2)} 
-        }
-        catch {
-            Write-Warning "Warning: Failed to gather information via wmi query"
+            catch {
+                Write-Warning "Warning: Failed to gather information via wmi query"
+            }
         }
 
         If($server.VersionMajor -gt 10) {
@@ -143,38 +150,52 @@ SELECT
         }
         foreach ($detail in $InstanceDetails)
 			{
-                [pscustomobject]@{
-                    MachineName = $detail.MachineName;
-                    WindowsName = $OSInfo.Caption
-                    WindowsVersion = $OSInfo.Version
-                    PhysicalMemoryGB = [Nullable[int]] $PhysicalMemory
-                    CPUSockets = [Nullable[int]] $cpuInfo.NumberOfSockets
-                    PhysicalCores = [Nullable[int]] $cpuInfo.NumberOfCores
-                    LogicalCores = [Nullable[int]] $cpuInfo.NumberOfLogicalProcessors
-                    ServerName = $detail.ServerName;
-                    Instance = $detail.Instance; 
-                    IsClustered = $detail.IsClustered;
-                    ComputerNamePhysicalNetBIOS = $detail.ComputerNamePhysicalNetBIOS;
-                    SQLVersion = $detail.SQLVersion;
-                    Edition = $detail.Edition;
-                    ProductLevel = $detail.ProductLevel;
-                    ProductUpdateLevel = $detail.ProductUpdateLevel;
-                    ProductVersion = $detail.ProductVersion;
-                    ProductMajorVersion = $detail.ProductMajorVersion;
-                    ProductMinorVersion = $detail.ProductMinorVersion;
-                    ProductBuild = $detail.ProductBuild;
-                    ProductBuildType = $detail.ProductBuildType;
-                    ProductUpdateReference = $detail.ProductUpdateReference;
-                    ProcessID = $detail.ProcessID;
-                    Collation = $detail.Collation;
-                    IsFullTextInstalled = $detail.IsFullTextInstalled;
-                    IsIntegratedSecurityOnly = $detail.IsIntegratedSecurityOnly;
-                    FilestreamConfiguredLevel = $detail.FilestreamConfiguredLevel;
-                    IsHadrEnabled = $detail.IsHadrEnabled;
-                    HadrManagerStatus = $detail.HadrManagerStatus;
-                    InstanceDefaultDataPath = $detail.InstanceDefaultDataPath;
-                    InstanceDefaultLogPath = $detail.InstanceDefaultLogPath;
-                    BuildClrVersion = $detail.BuildClrVersion;
+                if($simple) {
+                    [pscustomobject]@{
+                        MachineName = $detail.MachineName;
+                        ServerName = $detail.ServerName;
+                        Instance = $detail.Instance; 
+                        IsClustered = $detail.IsClustered;
+                        ComputerNamePhysicalNetBIOS = $detail.ComputerNamePhysicalNetBIOS;
+                        SQLVersion = $detail.SQLVersion;
+                        Edition = $detail.Edition;
+                        ProductLevel = $detail.ProductLevel;
+                        }
+                }
+                else {
+                    [pscustomobject]@{
+                        MachineName = $detail.MachineName;
+                        WindowsName = $OSInfo.Caption
+                        WindowsVersion = $OSInfo.Version
+                        PhysicalMemoryGB = [Nullable[int]] $PhysicalMemory
+                        CPUSockets = [Nullable[int]] $cpuInfo.NumberOfSockets
+                        PhysicalCores = [Nullable[int]] $cpuInfo.NumberOfCores
+                        LogicalCores = [Nullable[int]] $cpuInfo.NumberOfLogicalProcessors
+                        ServerName = $detail.ServerName;
+                        Instance = $detail.Instance; 
+                        IsClustered = $detail.IsClustered;
+                        ComputerNamePhysicalNetBIOS = $detail.ComputerNamePhysicalNetBIOS;
+                        SQLVersion = $detail.SQLVersion;
+                        Edition = $detail.Edition;
+                        ProductLevel = $detail.ProductLevel;
+                        ProductUpdateLevel = $detail.ProductUpdateLevel;
+                        ProductVersion = $detail.ProductVersion;
+                        ProductMajorVersion = $detail.ProductMajorVersion;
+                        ProductMinorVersion = $detail.ProductMinorVersion;
+                        ProductBuild = $detail.ProductBuild;
+                        ProductBuildType = $detail.ProductBuildType;
+                        ProductUpdateReference = $detail.ProductUpdateReference;
+                        ProcessID = $detail.ProcessID;
+                        Collation = $detail.Collation;
+                        IsFullTextInstalled = $detail.IsFullTextInstalled;
+                        IsIntegratedSecurityOnly = $detail.IsIntegratedSecurityOnly;
+                        FilestreamConfiguredLevel = $detail.FilestreamConfiguredLevel;
+                        IsHadrEnabled = $detail.IsHadrEnabled;
+                        HadrManagerStatus = $detail.HadrManagerStatus;
+                        InstanceDefaultDataPath = $detail.InstanceDefaultDataPath;
+                        InstanceDefaultLogPath = $detail.InstanceDefaultLogPath;
+                        BuildClrVersion = $detail.BuildClrVersion;
+                    }
                 }
             }
 
