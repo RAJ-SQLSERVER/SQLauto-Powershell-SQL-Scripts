@@ -21,7 +21,7 @@
     ValueFromPipelineByPropertyName=$True,
       HelpMessage='What SQL instance name would you like to target?')]
     [Alias('server ')]
-    [ValidateLength(3,30)]
+    [ValidateLength(3,40)]
     [string]$sqlinstance,
     [switch]$simple
   )
